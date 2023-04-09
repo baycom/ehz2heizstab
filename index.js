@@ -94,17 +94,17 @@ MQTTclient.on('message',function(topic, message, packet){
 
 tasmotaCommand("pwmfrequency", 10);
 
-function loop() {
-	var power_set = - ewma.value() + power_real;
-	if(options.debug){ console.log("ewma: " + -ewma.value() + "+ power_real: " + power_real + " = " + power_set);}
+async function loop() {
+	var power_set = parseInt(-ewma.value() + power_real);
+	if(options.debug){ console.log("ewma: " + -parseInt(ewma.value()) + "+ power_real: " + power_real + " = " + power_set);}
 	if(power_set > 500 && ssr_temp < 60) {
 		if(power_set > 6000) {
 			power_set = 6000;
 		}
 		var percent = parseInt(power_set*50 / 6000)+50;
-		setPWM(percent);
+		await setPWM(percent);
 	} else {
-		setPWM(0);
+		await setPWM(0);
 	}
 	setTimeout(loop, options.interval*1000);
 }
