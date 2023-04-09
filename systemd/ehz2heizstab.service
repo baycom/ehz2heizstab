@@ -1,0 +1,20 @@
+[Unit]
+Description=EHZ to Heizstab Service
+
+[Service]
+ExecStart=/usr/bin/node /home/pi/proj/smarthome/ehz2heizstab/index.js
+# Required on some systems
+WorkingDirectory=/home/pi/proj/smarthome/ehz2heizstab
+Restart=always
+ # Restart service after 10 seconds if node service crashes
+ RestartSec=120
+ # Output to syslog
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier=ehz2heizstab
+#User=<alternate user>
+#Group=<alternate group>
+#Environment=NODE_ENV=production PORT=1337
+
+[Install]
+WantedBy=multi-user.target
