@@ -21,6 +21,7 @@ const options = commandLineArgs(optionDefinitions)
 var ewma = new EWMA(options.window*1000);
 var power_real = 0;
 var ssr_temp = 0;
+var percent_last = 0;
 
 console.log("MQTT host           : " + options.mqtthost);
 console.log("MQTT Client ID      : " + options.mqttclientid);
@@ -57,6 +58,9 @@ async function tasmotaCommand(cmd, val) {
 }
 
 function setPWM(percent) {
+	if(percent > 100) {
+		percent = 100;
+	}
 	tasmotaCommand("Dimmer", percent);
 }
 
@@ -95,16 +99,22 @@ MQTTclient.on('message',function(topic, message, packet){
 tasmotaCommand("pwmfrequency", 10);
 
 async function loop() {
-	var power_set = parseInt(-ewma.value() + power_real);
-	if(options.debug){ console.log("ewma: " + -parseInt(ewma.value()) + "+ power_real: " + power_real + " = " + power_set);}
-	if(power_set > 500 && ssr_temp < 60) {
-		if(power_set > 6000) {
-			power_set = 6000;
+	if(ewma.value()) {
+		var power_set = parseInt(-ewma.value() + power_real);
+		if(options.debug){ console.log("ewma: " + parseInt(-ewma.value()) + "+ power_real: " + power_real + " = " + power_set);}
+		if(power_set > 500 && ssr_temp < 60) {
+			if(power_set > 6000) {
+				power_set = 6000;
+			}
+			var percent = parseInt(power_set*60 / 6000)+40;
+			if(percent <= percent_last && ewma.value()<-300) {
+				percent = percent_last + 5;
+			}
+			await setPWM(percent);
+			percent_last = percent;
+		} else {
+			await setPWM(0);
 		}
-		var percent = parseInt(power_set*50 / 6000)+50;
-		await setPWM(percent);
-	} else {
-		await setPWM(0);
 	}
 	setTimeout(loop, options.interval*1000);
 }
