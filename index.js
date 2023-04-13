@@ -61,6 +61,9 @@ function setPWM(percent) {
 	if(percent > 100) {
 		percent = 100;
 	}
+	if(percent < 0 || ssr_temp >= 60) {
+		percent = 0;
+	}
 	tasmotaCommand("Dimmer", percent);
 }
 
@@ -102,7 +105,7 @@ async function loop() {
 	if(ewma.value()) {
 		var power_available = -ewma.value();
 		if(options.debug){ console.log("power_available: " + power_available + "/ power_real: " + power_real);}
-		if(power_available > 500 && ssr_temp < 60) {
+		if(power_available > 500) {
 			if(percent_set < 40) {
 				percent_set = 40;
 			}
