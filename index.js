@@ -21,11 +21,7 @@ const options = commandLineArgs(optionDefinitions)
 var ewma = new EWMA(options.window*1000);
 var power_real = 0;
 var ssr_temp = 0;
-<<<<<<< HEAD
-var percent_last = 0;
-=======
 var percent_set = 0;
->>>>>>> 7038c2c (incremental steps up/down, no absolute calculation)
 
 console.log("MQTT host           : " + options.mqtthost);
 console.log("MQTT Client ID      : " + options.mqttclientid);
@@ -104,23 +100,6 @@ tasmotaCommand("pwmfrequency", 10);
 
 async function loop() {
 	if(ewma.value()) {
-<<<<<<< HEAD
-		var power_set = parseInt(-ewma.value() + power_real);
-		if(options.debug){ console.log("ewma: " + parseInt(-ewma.value()) + "+ power_real: " + power_real + " = " + power_set);}
-		if(power_set > 500 && ssr_temp < 60) {
-			if(power_set > 6000) {
-				power_set = 6000;
-			}
-			var percent = parseInt(power_set*60 / 6000)+40;
-			if(percent <= percent_last && ewma.value()<-300) {
-				percent = percent_last + 5;
-			}
-			await setPWM(percent);
-			percent_last = percent;
-		} else {
-			await setPWM(0);
-		}
-=======
 		var power_available = -ewma.value();
 		if(options.debug){ console.log("power_available: " + power_available + "/ power_real: " + power_real);}
 		if(power_available > 500 && ssr_temp < 60) {
@@ -137,7 +116,6 @@ async function loop() {
 			percent_set = 0;
 		}
 		await setPWM(percent_set);
->>>>>>> 7038c2c (incremental steps up/down, no absolute calculation)
 	}
 	setTimeout(loop, options.interval*1000);
 }
