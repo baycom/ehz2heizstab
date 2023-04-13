@@ -106,7 +106,7 @@ async function loop() {
 			if(percent_set < 40) {
 				percent_set = 40;
 			}
-			percent_set += 5;
+			percent_set += power_available/200;
 		} else if(power_available < 0) {
 			percent_set -= 10;
 		}
