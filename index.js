@@ -6,7 +6,7 @@ const EWMA = require('ewma');
 const commandLineArgs = require('command-line-args')
 
 const optionDefinitions = [
-	{ name: 'interval', alias: 'i', type: Number, defaultValue: 10},
+	{ name: 'interval', alias: 'i', type: Number, defaultValue: 5},
 	{ name: 'mqtthost', alias: 'm', type: String, defaultValue: "localhost" },
 	{ name: 'mqttclientid', alias: ' ', type: String, defaultValue: "ehz2heizstabMQTT" },
 	{ name: 'mqttvzlogger', alias: 'v', type: String, defaultValue: "vzlogger/data/chn4/raw" },
@@ -21,7 +21,11 @@ const options = commandLineArgs(optionDefinitions)
 var ewma = new EWMA(options.window*1000);
 var power_real = 0;
 var ssr_temp = 0;
+<<<<<<< HEAD
 var percent_last = 0;
+=======
+var percent_set = 0;
+>>>>>>> 7038c2c (incremental steps up/down, no absolute calculation)
 
 console.log("MQTT host           : " + options.mqtthost);
 console.log("MQTT Client ID      : " + options.mqttclientid);
@@ -38,7 +42,7 @@ function wget(url) {
         request(url, { json: true }, (error, response, body) => {
             if (error) reject(error);
             if (response === undefined || response.statusCode === undefined ||  response.statusCode != 200) {
-                reject('Invalid status code <');
+                reject('Invalid status code');
             }
             resolve(body);
         });
@@ -100,6 +104,7 @@ tasmotaCommand("pwmfrequency", 10);
 
 async function loop() {
 	if(ewma.value()) {
+<<<<<<< HEAD
 		var power_set = parseInt(-ewma.value() + power_real);
 		if(options.debug){ console.log("ewma: " + parseInt(-ewma.value()) + "+ power_real: " + power_real + " = " + power_set);}
 		if(power_set > 500 && ssr_temp < 60) {
@@ -115,6 +120,24 @@ async function loop() {
 		} else {
 			await setPWM(0);
 		}
+=======
+		var power_available = -ewma.value();
+		if(options.debug){ console.log("power_available: " + power_available + "/ power_real: " + power_real);}
+		if(power_available > 500 && ssr_temp < 60) {
+			if(percent_set < 40) {
+				percent_set = 40;
+			}
+			percent_set += 5;
+		} else if(power_available < 0) {
+			percent_set -= 10;
+		}
+		if(percent_set > 100) {
+			percent_set = 100;
+		} else if(percent_set < 0) {
+			percent_set = 0;
+		}
+		await setPWM(percent_set);
+>>>>>>> 7038c2c (incremental steps up/down, no absolute calculation)
 	}
 	setTimeout(loop, options.interval*1000);
 }
