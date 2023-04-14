@@ -6,7 +6,7 @@ const EWMA = require('ewma');
 const commandLineArgs = require('command-line-args')
 
 const optionDefinitions = [
-	{ name: 'interval', alias: 'i', type: Number, defaultValue: 10},
+	{ name: 'interval', alias: 'i', type: Number, defaultValue: 5},
 	{ name: 'mqtthost', alias: 'm', type: String, defaultValue: "localhost" },
 	{ name: 'mqttclientid', alias: ' ', type: String, defaultValue: "ehz2heizstabMQTT" },
 	{ name: 'mqttvzlogger', alias: 'v', type: String, defaultValue: "vzlogger/data/chn4/raw" },
@@ -86,7 +86,6 @@ MQTTclient.subscribe("tele/" + options.mqtttasmota + "/SENSOR");
 if(options.debug){ console.log("tele/" + options.mqtttasmota + "/SENSOR");}
 
 MQTTclient.on('message',function(topic, message, packet){
-//	console.log(topic);
 	if(topic.includes(options.mqttvzlogger) ) {
 		var val=parseFloat(message.toString());
 		ewma.insert(val);
