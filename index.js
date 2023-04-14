@@ -21,7 +21,7 @@ const options = commandLineArgs(optionDefinitions)
 var ewma = new EWMA(options.window*1000);
 var power_real = 0;
 var ssr_temp = 0;
-var percent_last = 0;
+var percent_set = 0;
 
 console.log("MQTT host           : " + options.mqtthost);
 console.log("MQTT Client ID      : " + options.mqttclientid);
@@ -38,7 +38,7 @@ function wget(url) {
         request(url, { json: true }, (error, response, body) => {
             if (error) reject(error);
             if (response === undefined || response.statusCode === undefined ||  response.statusCode != 200) {
-                reject('Invalid status code <');
+                reject('Invalid status code');
             }
             resolve(body);
         });
@@ -60,6 +60,9 @@ async function tasmotaCommand(cmd, val) {
 function setPWM(percent) {
 	if(percent > 100) {
 		percent = 100;
+	}
+	if(percent < 0 || ssr_temp >= 60) {
+		percent = 0;
 	}
 	tasmotaCommand("Dimmer", percent);
 }
@@ -100,21 +103,22 @@ tasmotaCommand("pwmfrequency", 10);
 
 async function loop() {
 	if(ewma.value()) {
-		var power_set = parseInt(-ewma.value() + power_real);
-		if(options.debug){ console.log("ewma: " + parseInt(-ewma.value()) + "+ power_real: " + power_real + " = " + power_set);}
-		if(power_set > 500 && ssr_temp < 60) {
-			if(power_set > 6000) {
-				power_set = 6000;
+		var power_available = -ewma.value();
+		if(options.debug){ console.log("power_available: " + parseInt(power_available) + "/ power_real: " + power_real);}
+		if(power_available > 500) {
+			if(percent_set < 40) {
+				percent_set = 40;
 			}
-			var percent = parseInt(power_set*60 / 6000)+40;
-			if(percent <= percent_last && ewma.value()<-300) {
-				percent = percent_last + 5;
-			}
-			await setPWM(percent);
-			percent_last = percent;
-		} else {
-			await setPWM(0);
+			percent_set += power_available/200;
+		} else if(power_available < 0) {
+			percent_set -= 10;
 		}
+		if(percent_set > 100) {
+			percent_set = 100;
+		} else if(percent_set < 0) {
+			percent_set = 0;
+		}
+		await setPWM(percent_set);
 	}
 	setTimeout(loop, options.interval*1000);
 }
