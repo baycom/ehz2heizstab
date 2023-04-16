@@ -6,7 +6,7 @@ const EWMA = require('ewma');
 const commandLineArgs = require('command-line-args')
 
 const optionDefinitions = [
-	{ name: 'interval', alias: 'i', type: Number, defaultValue: 5},
+	{ name: 'interval', alias: 'i', type: Number, defaultValue: 10},
 	{ name: 'mqtthost', alias: 'm', type: String, defaultValue: "localhost" },
 	{ name: 'mqttclientid', alias: ' ', type: String, defaultValue: "ehz2heizstabMQTT" },
 	{ name: 'mqttvzlogger', alias: 'v', type: String, defaultValue: "vzlogger/data/chn4/raw" },
@@ -58,10 +58,11 @@ async function tasmotaCommand(cmd, val) {
 }
 
 function setPWM(percent) {
+	percent=parseInt(percent);
 	if(percent > 100) {
 		percent = 100;
 	}
-	if(percent < 0 || ssr_temp >= 60) {
+	if(percent < 5 || ssr_temp >= 60) {
 		percent = 0;
 	}
 	tasmotaCommand("Dimmer", percent);
@@ -86,6 +87,7 @@ MQTTclient.subscribe("tele/" + options.mqtttasmota + "/SENSOR");
 if(options.debug){ console.log("tele/" + options.mqtttasmota + "/SENSOR");}
 
 MQTTclient.on('message',function(topic, message, packet){
+//	console.log(topic);
 	if(topic.includes(options.mqttvzlogger) ) {
 		var val=parseFloat(message.toString());
 		ewma.insert(val);
@@ -111,11 +113,6 @@ async function loop() {
 			percent_set += power_available/200;
 		} else if(power_available < 0) {
 			percent_set -= 10;
-		}
-		if(percent_set > 100) {
-			percent_set = 100;
-		} else if(percent_set < 0) {
-			percent_set = 0;
 		}
 		await setPWM(percent_set);
 	}
