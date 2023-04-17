@@ -108,11 +108,11 @@ async function loop() {
 		} else if(power_available < 0) {
 			percent_set -= 10;
 		}
-		if(percent > 100) {
-			percent = 100;
+		if(percent_set > 100) {
+			percent_set = 100;
 		}
-		if(percent < 5 || ssr_temp >= 60) {
-			percent = 0;
+		if(percent_set < 5 || ssr_temp >= 60) {
+			percent_set = 0;
 		}
 		await setPWM(percent_set);
 	}
