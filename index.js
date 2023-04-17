@@ -59,12 +59,6 @@ async function tasmotaCommand(cmd, val) {
 
 function setPWM(percent) {
 	percent=parseInt(percent);
-	if(percent > 100) {
-		percent = 100;
-	}
-	if(percent < 5 || ssr_temp >= 60) {
-		percent = 0;
-	}
 	tasmotaCommand("Dimmer", percent);
 }
 
@@ -113,6 +107,12 @@ async function loop() {
 			percent_set += power_available/200;
 		} else if(power_available < 0) {
 			percent_set -= 10;
+		}
+		if(percent > 100) {
+			percent = 100;
+		}
+		if(percent < 5 || ssr_temp >= 60) {
+			percent = 0;
 		}
 		await setPWM(percent_set);
 	}
