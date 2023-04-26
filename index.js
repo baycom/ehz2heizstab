@@ -2,7 +2,7 @@ const util=require('util');
 const mqtt=require('mqtt');
 const request = require('request');
 const EWMA = require('ewma');
-
+const interpolateArrays = require('interpolate-arrays')
 const commandLineArgs = require('command-line-args')
 
 const optionDefinitions = [
@@ -17,6 +17,9 @@ const optionDefinitions = [
   ];
 
 const options = commandLineArgs(optionDefinitions)
+const powerArray=[[0,0],[5,300],[10,600],[15,900],[20,1200],[25,1500],[30,1800],[35,2100],[40,2400],[45,2700],
+		[50,3000],[55,3300],[60,3600],[65,3900],[70,4200],[75,4500],[80,4800],[85,5100],[90,5400],
+		[95,5700],[100,6000]];
 
 var ewma = new EWMA(options.window*1000);
 var power_real = 0;
@@ -31,7 +34,18 @@ console.log("Tasmota Host        : " + options.tasmotahost);
 console.log("Smoothing Window (s): " + options.window);
 console.log("Interval (s)        : " + options.interval);
 
-
+function power2percent(array, power) {
+  for (let i = 0; i < array.length; i++) {
+  	const pwr = array[i][1];
+  	if(pwr>power) {
+  		if(i == 0) {
+  			return 0;
+		}
+		return array[i-1][0];
+  	}
+  }
+  return 100;
+}
 
 function wget(url) {
     return new Promise((resolve, reject) => {
@@ -98,8 +112,10 @@ tasmotaCommand("pwmfrequency", 10);
 
 async function loop() {
 	if(ewma.value()) {
-		var power_available = -ewma.value();
-		if(options.debug){ console.log("power_available: " + parseInt(power_available) + "/ power_real: " + power_real);}
+		const power_available = -ewma.value();
+		const max_percent = power2percent(powerArray, power_available + power_real);
+
+		if(options.debug){ console.log("power_available: " + parseInt(power_available) + "/ power_real: " + power_real, "/ max_percent: " + max_percent);}
 		if(power_available > 500) {
 			if(percent_set < 40) {
 				percent_set = 40;
@@ -113,6 +129,9 @@ async function loop() {
 		}
 		if(percent_set < 5 || ssr_temp >= 60) {
 			percent_set = 0;
+		}
+		if(power_available < 6000.0 && power_real < 100.0 && percent_set == 100) {
+			percent_set = max_percent;
 		}
 		await setPWM(percent_set);
 	}
