@@ -22,6 +22,8 @@ const powerArray=[[0,0],[5,300],[10,600],[15,900],[20,1200],[25,1500],[30,1800],
 		[95,5700],[100,6000]];
 
 var ewma = new EWMA(options.window*1000);
+var last_vzlogger = 0;
+var last_tasmota = 0;
 var power_real = 0;
 var ssr_temp = 0;
 var percent_set = 0;
@@ -99,10 +101,12 @@ MQTTclient.on('message',function(topic, message, packet){
 	if(topic.includes(options.mqttvzlogger) ) {
 		var val=parseFloat(message.toString());
 		ewma.insert(val);
+		last_vzlogger = Date.now();
 	} else if(topic.includes(options.mqtttasmota)) {
 		var obj=JSON.parse(message);
 		power_real = obj.HS.power_total;
 		ssr_temp = obj.DS18B20.Temperature;
+		last_tasmota = Date.now();
 		if(options.debug){ console.log("power_real: " + power_real + " SSR-Temperature: " + ssr_temp);}
 	}
 });
@@ -114,7 +118,10 @@ async function loop() {
 	if(ewma.value()) {
 		const power_available = -ewma.value();
 		const max_percent = power2percent(powerArray, power_available + power_real);
-
+		if(Date.now()-last_tasmota > 60000 || Date.now()-last_vzlogger > 60000) {
+			console.log("stale data (MQTT)");
+			await setPWM(0);
+		}
 		if(options.debug){ console.log("power_available: " + parseInt(power_available) + "/ power_real: " + power_real, "/ max_percent: " + max_percent);}
 		if(power_available > 500) {
 			if(percent_set < 40) {
