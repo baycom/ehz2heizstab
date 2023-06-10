@@ -12,6 +12,10 @@ const optionDefinitions = [
 	{ name: 'mqttvzlogger', alias: 'v', type: String, defaultValue: "vzlogger/data/chn4/raw" },
 	{ name: 'tasmotahost', alias: 'h', type: String, defaultValue: "http://tasmota-FD6384-0900" },
 	{ name: 'mqtttasmota', alias: 't', type: String,  defaultValue: "tasmota_FD6384"},
+	{ name: 'mqttheater', alias: 'f', type: String,  defaultValue: "eta/192.168.10.99"}, 
+	{ name: 'mqttwatertemp', alias: 'T', type: String,  defaultValue:"/112/10111/0/0/12271/Warmwasserspeicher"},
+	{ name: 'heatstart', alias: 's', type: Number,  defaultValue: 35.0},
+	{ name: 'heatstop', alias: 'S', type: Number,  defaultValue: 47.0},
 	{ name: 'window', alias: 'w', type: Number,  defaultValue: 10},
 	{ name: 'debug', alias: 'd', type: Boolean,  defaultValue: false}
   ];
@@ -27,11 +31,17 @@ var last_tasmota = 0;
 var power_real = 0;
 var ssr_temp = 0;
 var percent_set = 0;
+var heating_done = false;
+var water_temp = 0;
 
 console.log("MQTT host           : " + options.mqtthost);
 console.log("MQTT Client ID      : " + options.mqttclientid);
 console.log("MQTT VZLogger-Topic : " + options.mqttvzlogger);
 console.log("MQTT Tasmota-Topic  : " + options.mqtttasmota);
+console.log("MQTT Heater-Topic   : " + options.mqttheater);
+console.log("MQTT Watertemp-Var  : " + options.mqttwatertemp);
+console.log("Start heating       : " + options.heatstart);
+console.log("Stop heating        : " + options.heatstop);
 console.log("Tasmota Host        : " + options.tasmotahost);
 console.log("Smoothing Window (s): " + options.window);
 console.log("Interval (s)        : " + options.interval);
@@ -94,6 +104,8 @@ MQTTclient.on("error",function(error){
 
 MQTTclient.subscribe(options.mqttvzlogger);
 MQTTclient.subscribe("tele/" + options.mqtttasmota + "/SENSOR");
+MQTTclient.subscribe(options.mqttheater);
+
 if(options.debug){ console.log("tele/" + options.mqtttasmota + "/SENSOR");}
 
 MQTTclient.on('message',function(topic, message, packet){
@@ -108,6 +120,10 @@ MQTTclient.on('message',function(topic, message, packet){
 		ssr_temp = obj.DS18B20.Temperature;
 		last_tasmota = Date.now();
 		if(options.debug){ console.log("power_real: " + power_real + " SSR-Temperature: " + ssr_temp);}
+	} else if(topic.includes(options.mqttheater)) {
+		var obj=JSON.parse(message);
+		water_temp = obj[options.mqttwatertemp];
+		if(options.debug){ console.log("water_temp: " + water_temp);}
 	}
 });
 
@@ -121,26 +137,32 @@ async function loop() {
 		if(Date.now()-last_tasmota > 60000 || Date.now()-last_vzlogger > 60000) {
 			console.log("stale data (MQTT)");
 			await setPWM(0);
-		}
-		if(options.debug){ console.log("power_available: " + parseInt(power_available) + "/ power_real: " + power_real, "/ max_percent: " + max_percent);}
-		if(power_available > 500) {
-			if(percent_set < 40) {
-				percent_set = 40;
+		} else if(heating_done && water_temp > options.heatstart) {
+			await setPWM(0);
+		} else if(!heating_done && water_temp >= options.heatstop) {
+			await setPWM(0);
+			heating_done = true;
+		} else {
+			if(options.debug){ console.log("heating_done: " + heating_done + " power_available: " + parseInt(power_available) + "/ power_real: " + power_real, "/ max_percent: " + max_percent);}
+			if(power_available > 500) {
+				if(percent_set < 40) {
+					percent_set = 40;
+				}
+				percent_set += power_available/200;
+			} else if(power_available < 0) {
+				percent_set -= 10;
 			}
-			percent_set += power_available/200;
-		} else if(power_available < 0) {
-			percent_set -= 10;
+			if(percent_set > 100) {
+				percent_set = 100;
+			}
+			if(percent_set < 5 || ssr_temp >= 60) {
+				percent_set = 0;
+			}
+			if(power_available < 6000.0 && power_real < 100.0 && percent_set == 100) {
+				percent_set = max_percent;
+			}
+			await setPWM(percent_set);
 		}
-		if(percent_set > 100) {
-			percent_set = 100;
-		}
-		if(percent_set < 5 || ssr_temp >= 60) {
-			percent_set = 0;
-		}
-		if(power_available < 6000.0 && power_real < 100.0 && percent_set == 100) {
-			percent_set = max_percent;
-		}
-		await setPWM(percent_set);
 	}
 	setTimeout(loop, options.interval*1000);
 }
