@@ -143,6 +143,7 @@ async function loop() {
 			await setPWM(0);
 			heating_done = true;
 		} else {
+			heating_done =false;
 			if(options.debug){ console.log("heating_done: " + heating_done + " power_available: " + parseInt(power_available) + "/ power_real: " + power_real, "/ max_percent: " + max_percent);}
 			if(power_available > 500) {
 				if(percent_set < 40) {
