@@ -172,14 +172,14 @@ async function loop() {
 			if(percent_set > 100) {
 				percent_set = 100;
 			}
+			if(power_available < 6000.0 && power_real < 100.0 && percent_set == 100) {
+				percent_set = max_percent;
+			}
 			if(percent_set < 5 || ssr_temp >= 60) {
 				percent_set = 0;
 			}
 			if(system_op_status != 1 && system_op_status != 5) {
 				percent_set = 0;
-			}
-			if(power_available < 6000.0 && power_real < 100.0 && percent_set == 100) {
-				percent_set = max_percent;
 			}
 			await setPWM(percent_set);
 		}
