@@ -8,12 +8,14 @@ const commandLineArgs = require('command-line-args')
 const optionDefinitions = [
 	{ name: 'interval', alias: 'i', type: Number, defaultValue: 10},
 	{ name: 'mqtthost', alias: 'm', type: String, defaultValue: "localhost" },
-	{ name: 'mqttclientid', alias: ' ', type: String, defaultValue: "ehz2heizstabMQTT" },
+	{ name: 'mqttclientid', alias: 'I', type: String, defaultValue: "ehz2heizstabMQTT" },
 	{ name: 'mqttvzlogger', alias: 'v', type: String, defaultValue: "vzlogger/data/chn4/raw" },
 	{ name: 'tasmotahost', alias: 'h', type: String, defaultValue: "http://tasmota-FD6384-0900" },
 	{ name: 'mqtttasmota', alias: 't', type: String,  defaultValue: "tasmota_FD6384"},
 	{ name: 'mqttheater', alias: 'f', type: String,  defaultValue: "eta/192.168.10.99"}, 
 	{ name: 'mqttwatertemp', alias: 'T', type: String,  defaultValue:"/112/10111/0/0/12271/Warmwasserspeicher"},
+	{ name: 'mqttsysopstatus', alias: 'o', type: String,  defaultValue:"Batrium/4538/3233"},
+	{ name: 'mqttbatterypower', alias: 'b', type: String,  defaultValue:"GoodWe/9010KETU224W0868"},
 	{ name: 'heatstart', alias: 's', type: Number,  defaultValue: 35.0},
 	{ name: 'heatstop', alias: 'S', type: Number,  defaultValue: 47.0},
 	{ name: 'window', alias: 'w', type: Number,  defaultValue: 10},
@@ -33,6 +35,8 @@ var ssr_temp = 0;
 var percent_set = 0;
 var heating_done = false;
 var water_temp = 0;
+var system_op_status = 0;
+var battery_power = 0;
 
 console.log("MQTT host           : " + options.mqtthost);
 console.log("MQTT Client ID      : " + options.mqttclientid);
@@ -40,6 +44,8 @@ console.log("MQTT VZLogger-Topic : " + options.mqttvzlogger);
 console.log("MQTT Tasmota-Topic  : " + options.mqtttasmota);
 console.log("MQTT Heater-Topic   : " + options.mqttheater);
 console.log("MQTT Watertemp-Var  : " + options.mqttwatertemp);
+console.log("MQTT SystemOpStatus : " + options.mqttsysopstatus);
+console.log("MQTT BatteryPower   : " + options.mqttbatterypower);
 console.log("Start heating       : " + options.heatstart);
 console.log("Stop heating        : " + options.heatstop);
 console.log("Tasmota Host        : " + options.tasmotahost);
@@ -105,6 +111,8 @@ MQTTclient.on("error",function(error){
 MQTTclient.subscribe(options.mqttvzlogger);
 MQTTclient.subscribe("tele/" + options.mqtttasmota + "/SENSOR");
 MQTTclient.subscribe(options.mqttheater);
+MQTTclient.subscribe(options.mqttsysopstatus);
+MQTTclient.subscribe(options.mqttbatterypower);
 
 if(options.debug){ console.log("tele/" + options.mqtttasmota + "/SENSOR");}
 
@@ -124,6 +132,14 @@ MQTTclient.on('message',function(topic, message, packet){
 		var obj=JSON.parse(message);
 		water_temp = obj[options.mqttwatertemp];
 		if(options.debug){ console.log("water_temp: " + water_temp);}
+	} else if(topic.includes(options.mqttsysopstatus)) {
+		var obj=JSON.parse(message);
+		system_op_status = obj["SystemOpStatus"];
+		if(options.debug){ console.log("system_op_status: " + system_op_status);}
+	} else if(topic.includes(options.mqttbatterypower)) {
+		var obj=JSON.parse(message);
+		battery_power = obj["BatteryPower"];
+		if(options.debug){ console.log("battery_power: " + battery_power);}
 	}
 });
 
@@ -133,7 +149,7 @@ tasmotaCommand("pwmfrequency", 10);
 async function loop() {
 	if(ewma.value()) {
 		const power_available = -ewma.value();
-		const max_percent = power2percent(powerArray, power_available + power_real);
+		const max_percent = power2percent(powerArray, power_available + power_real - battery_power);
 		if(Date.now()-last_tasmota > 60000 || Date.now()-last_vzlogger > 60000) {
 			console.log("stale data (MQTT)");
 			await setPWM(0);
@@ -144,7 +160,7 @@ async function loop() {
 			heating_done = true;
 		} else {
 			heating_done =false;
-			if(options.debug){ console.log("heating_done: " + heating_done + " power_available: " + parseInt(power_available) + "/ power_real: " + power_real, "/ max_percent: " + max_percent);}
+			if(options.debug){ console.log("heating_done: " + heating_done + " power_available: " + parseInt(power_available) + " / power_real: " + power_real, "/ max_percent: " + max_percent);}
 			if(power_available > 500) {
 				if(percent_set < 40) {
 					percent_set = 40;
@@ -157,6 +173,9 @@ async function loop() {
 				percent_set = 100;
 			}
 			if(percent_set < 5 || ssr_temp >= 60) {
+				percent_set = 0;
+			}
+			if(system_op_status != 1 && system_op_status != 5) {
 				percent_set = 0;
 			}
 			if(power_available < 6000.0 && power_real < 100.0 && percent_set == 100) {
