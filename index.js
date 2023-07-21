@@ -149,7 +149,7 @@ tasmotaCommand("pwmfrequency", 10);
 async function loop() {
 	if(ewma.value()) {
 		const power_available = -ewma.value();
-		const max_percent = power2percent(powerArray, power_available + power_real - battery_power);
+		const max_percent = power2percent(powerArray, power_available + power_real + battery_power);
 		if(Date.now()-last_tasmota > 60000 || Date.now()-last_vzlogger > 60000) {
 			console.log("stale data (MQTT)");
 			await setPWM(0);
