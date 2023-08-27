@@ -37,6 +37,7 @@ var heating_done = false;
 var water_temp = 0;
 var system_op_status = 0;
 var battery_power = 0;
+var force_heating = false;
 
 console.log("MQTT host           : " + options.mqtthost);
 console.log("MQTT Client ID      : " + options.mqttclientid);
@@ -113,6 +114,7 @@ MQTTclient.subscribe("tele/" + options.mqtttasmota + "/SENSOR");
 MQTTclient.subscribe(options.mqttheater);
 MQTTclient.subscribe(options.mqttsysopstatus);
 MQTTclient.subscribe(options.mqttbatterypower);
+MQTTclient.subscribe("ehz2heizstab/#");
 
 if(options.debug){ console.log("tele/" + options.mqtttasmota + "/SENSOR");}
 
@@ -140,6 +142,11 @@ MQTTclient.on('message',function(topic, message, packet){
 		var obj=JSON.parse(message);
 		battery_power = obj["BatteryPower"];
 		if(options.debug){ console.log("battery_power: " + battery_power);}
+	}else if(topic.includes("ehz2heizstab")) {
+		var obj=JSON.parse(message);
+		force_heating = obj["force_heating"];
+		if(options.debug){ console.log("force_heating: " + force_heating);}
+		heating_done = false;
 	}
 });
 
@@ -158,28 +165,33 @@ async function loop() {
 		} else if(!heating_done && water_temp >= options.heatstop) {
 			await setPWM(0);
 			heating_done = true;
+			force_heating = false;
 		} else {
 			heating_done =false;
-			if(options.debug){ console.log("heating_done: " + heating_done + " power_available: " + parseInt(power_available) + " / power_real: " + power_real, "/ max_percent: " + max_percent);}
-			if(power_available > 500) {
-				if(percent_set < 40) {
-					percent_set = 40;
-				}
-				percent_set += power_available/200;
-			} else if(power_available < 0) {
-				percent_set -= 10;
-			}
-			if(percent_set > 100) {
+			if(options.debug){ console.log("force_heating: " + force_heating + " heating_done: " + heating_done + " power_available: " + parseInt(power_available) + " / power_real: " + power_real, "/ max_percent: " + max_percent);}
+			if(force_heating) {
 				percent_set = 100;
-			}
-			if(power_available < 6000.0 && power_real < 100.0 && percent_set == 100) {
-				percent_set = max_percent;
-			}
-			if(percent_set < 5 || ssr_temp >= 60) {
-				percent_set = 0;
-			}
-			if(system_op_status != 1 && system_op_status != 5) {
-				percent_set = 0;
+			} else {
+				if(power_available > 500) {
+					if(percent_set < 40) {
+						percent_set = 40;
+					}
+					percent_set += power_available/200;
+				} else if(power_available < 0) {
+					percent_set -= 10;
+				}
+				if(percent_set > 100) {
+					percent_set = 100;
+				}
+				if(power_available < 6000.0 && power_real < 100.0 && percent_set == 100) {
+					percent_set = max_percent;
+				}
+				if(percent_set < 5 || ssr_temp >= 60) {
+					percent_set = 0;
+				}
+				if(system_op_status != 1 && system_op_status != 5) {
+					percent_set = 0;
+				}
 			}
 			await setPWM(percent_set);
 		}
