@@ -68,7 +68,7 @@ function power2percent(array, power) {
 
 function wget(url) {
     return new Promise((resolve, reject) => {
-        request(url, { json: true }, (error, response, body) => {
+        request(url, { json: true, timeout: 1000 }, (error, response, body) => {
             if (error) reject(error);
             if (response === undefined || response.statusCode === undefined ||  response.statusCode != 200) {
                 reject('Invalid status code');
