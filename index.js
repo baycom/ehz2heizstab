@@ -8,10 +8,11 @@ const commandLineArgs = require('command-line-args')
 const optionDefinitions = [
 	{ name: 'interval', alias: 'i', type: Number, defaultValue: 10},
 	{ name: 'mqtthost', alias: 'm', type: String, defaultValue: "localhost" },
-	{ name: 'mqttclientid', alias: 'I', type: String, defaultValue: "ehz2heizstabMQTT" },
+	{ name: 'mqttclientid', alias: 'I', type: String, defaultValue: "heizstab" },
 	{ name: 'mqttvzlogger', alias: 'v', type: String, defaultValue: "vzlogger/data/chn4/raw" },
 	{ name: 'tasmotahost', alias: 'h', type: String, defaultValue: "http://tasmota-FD6384-0900" },
-	{ name: 'mqtttasmota', alias: 't', type: String,  defaultValue: "tasmota_FD6384"},
+	{ name: 'mqtttasmota', alias: 't', type: String,  defaultValue: "tele/tasmota_FD6384/SENSOR"},
+	{ name: 'mqtttasmotapower', alias: 'p', type: String,  defaultValue: "power_total"},
 	{ name: 'mqttheater', alias: 'f', type: String,  defaultValue: "eta/192.168.10.99"}, 
 	{ name: 'mqttwatertemp', alias: 'T', type: String,  defaultValue:"/112/10111/0/0/12271/Warmwasserspeicher"},
 	{ name: 'mqttsysopstatus', alias: 'o', type: String,  defaultValue:"Batrium/4538/3233"},
@@ -43,6 +44,7 @@ console.log("MQTT host           : " + options.mqtthost);
 console.log("MQTT Client ID      : " + options.mqttclientid);
 console.log("MQTT VZLogger-Topic : " + options.mqttvzlogger);
 console.log("MQTT Tasmota-Topic  : " + options.mqtttasmota);
+console.log("MQTT Tasmota-Power  : " + options.mqtttasmotapower);
 console.log("MQTT Heater-Topic   : " + options.mqttheater);
 console.log("MQTT Watertemp-Var  : " + options.mqttwatertemp);
 console.log("MQTT SystemOpStatus : " + options.mqttsysopstatus);
@@ -68,7 +70,7 @@ function power2percent(array, power) {
 
 function wget(url) {
     return new Promise((resolve, reject) => {
-        request(url, { json: true }, (error, response, body) => {
+        request(url, { json: true, timeout: 1000 }, (error, response, body) => {
             if (error) reject(error);
             if (response === undefined || response.statusCode === undefined ||  response.statusCode != 200) {
                 reject('Invalid status code');
@@ -110,13 +112,11 @@ MQTTclient.on("error",function(error){
 	});
 
 MQTTclient.subscribe(options.mqttvzlogger);
-MQTTclient.subscribe("tele/" + options.mqtttasmota + "/SENSOR");
+MQTTclient.subscribe(options.mqtttasmota);
 MQTTclient.subscribe(options.mqttheater);
 MQTTclient.subscribe(options.mqttsysopstatus);
 MQTTclient.subscribe(options.mqttbatterypower);
 MQTTclient.subscribe("ehz2heizstab/#");
-
-if(options.debug){ console.log("tele/" + options.mqtttasmota + "/SENSOR");}
 
 MQTTclient.on('message',function(topic, message, packet){
 //	console.log(topic);
@@ -126,7 +126,7 @@ MQTTclient.on('message',function(topic, message, packet){
 		last_vzlogger = Date.now();
 	} else if(topic.includes(options.mqtttasmota)) {
 		var obj=JSON.parse(message);
-		power_real = obj.HS.power_total;
+		power_real = obj.HS[options.mqtttasmotapower];
 		ssr_temp = obj.DS18B20.Temperature;
 		last_tasmota = Date.now();
 		if(options.debug){ console.log("power_real: " + power_real + " SSR-Temperature: " + ssr_temp);}
