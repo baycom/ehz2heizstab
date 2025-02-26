@@ -6,17 +6,17 @@ const interpolateArrays = require('interpolate-arrays')
 const commandLineArgs = require('command-line-args')
 
 const optionDefinitions = [
-	{ name: 'interval', alias: 'i', type: Number, defaultValue: 10},
+	{ name: 'interval', alias: 'i', type: Number, defaultValue: 1},
 	{ name: 'mqtthost', alias: 'm', type: String, defaultValue: "localhost" },
 	{ name: 'mqttclientid', alias: 'I', type: String, defaultValue: "heizstab" },
-	{ name: 'mqttvzlogger', alias: 'v', type: String, defaultValue: "vzlogger/data/chn4/raw" },
-	{ name: 'tasmotahost', alias: 'h', type: String, defaultValue: "http://tasmota-FD6384-0900" },
-	{ name: 'mqtttasmota', alias: 't', type: String,  defaultValue: "tele/tasmota_FD6384/SENSOR"},
-	{ name: 'mqtttasmotapower', alias: 'p', type: String,  defaultValue: "power_total"},
+	{ name: 'mqttagg', alias: 'a', type: String, defaultValue: "agg/stb" },
+	{ name: 'mqtttasmota', alias: 't', type: String,  defaultValue: "tasmota_FD6384"},
+	{ name: 'mqttheatermeter', alias: 'M', type: String,  defaultValue: "SM-DRT/HS"},
+	{ name: 'mqttheatermeterpower', alias: 'p', type: String,  defaultValue: "TotalActivePower"},
 	{ name: 'mqttheater', alias: 'f', type: String,  defaultValue: "eta/192.168.10.99"}, 
 	{ name: 'mqttwatertemp', alias: 'T', type: String,  defaultValue:"/112/10111/0/0/12271/Warmwasserspeicher"},
+	{ name: 'mqttssrtemp', alias: 'r', type: String,  defaultValue:"DS18B20"},
 	{ name: 'mqttsysopstatus', alias: 'o', type: String,  defaultValue:"Batrium/4538/3233"},
-	{ name: 'mqttbatterypower', alias: 'b', type: String,  defaultValue:"GoodWe/9010KETU224W0868"},
 	{ name: 'heatstart', alias: 's', type: Number,  defaultValue: 35.0},
 	{ name: 'heatstop', alias: 'S', type: Number,  defaultValue: 47.0},
 	{ name: 'window', alias: 'w', type: Number,  defaultValue: 10},
@@ -29,7 +29,7 @@ const powerArray=[[0,0],[5,300],[10,600],[15,900],[20,1200],[25,1500],[30,1800],
 		[95,5700],[100,6000]];
 
 var ewma = new EWMA(options.window*1000);
-var last_vzlogger = 0;
+var last_agg = 0;
 var last_tasmota = 0;
 var power_real = 0;
 var ssr_temp = 0;
@@ -42,18 +42,33 @@ var force_heating = false;
 
 console.log("MQTT host           : " + options.mqtthost);
 console.log("MQTT Client ID      : " + options.mqttclientid);
-console.log("MQTT VZLogger-Topic : " + options.mqttvzlogger);
+console.log("MQTT Agg-Topic      : " + options.mqttagg);
 console.log("MQTT Tasmota-Topic  : " + options.mqtttasmota);
-console.log("MQTT Tasmota-Power  : " + options.mqtttasmotapower);
+console.log("MQTT Heater-Meter   : " + options.mqttheatermeter);
+console.log("MQTT Htr-Meter-Power: " + options.mqttheatermeterpower);
 console.log("MQTT Heater-Topic   : " + options.mqttheater);
 console.log("MQTT Watertemp-Var  : " + options.mqttwatertemp);
+console.log("MQTT SSR-temp-Var   : " + options.mqttssrtemp);
 console.log("MQTT SystemOpStatus : " + options.mqttsysopstatus);
-console.log("MQTT BatteryPower   : " + options.mqttbatterypower);
 console.log("Start heating       : " + options.heatstart);
 console.log("Stop heating        : " + options.heatstop);
-console.log("Tasmota Host        : " + options.tasmotahost);
 console.log("Smoothing Window (s): " + options.window);
 console.log("Interval (s)        : " + options.interval);
+
+function findVal(object, key) {
+  var value;
+  Object.keys(object).some(function (k) {
+    if (k === key) {
+      value = object[k];
+      return true;
+    }
+    if (object[k] && typeof object[k] === 'object') {
+      value = findVal(object[k], key);
+      return value !== undefined;
+    }
+  });
+  return value;
+}
 
 function power2percent(array, power) {
   for (let i = 0; i < array.length; i++) {
@@ -68,28 +83,10 @@ function power2percent(array, power) {
   return 100;
 }
 
-function wget(url) {
-    return new Promise((resolve, reject) => {
-        request(url, { json: true, timeout: 1000 }, (error, response, body) => {
-            if (error) reject(error);
-            if (response === undefined || response.statusCode === undefined ||  response.statusCode != 200) {
-                reject('Invalid status code');
-            }
-            resolve(body);
-        });
-    });
-}
-
-
 async function tasmotaCommand(cmd, val) {
-	try {
-		if(options.debug) { console.log("tasmotaCommand: "+cmd+" val: "+val);}
-		const body= await wget(options.tasmotahost+"/cm?cmnd="+cmd+"%20"+val);
-		if(options.debug) { console.log("body: "+ util.inspect(body));}
-	} catch (error) {
-        	console.error('ERROR:');
-        	console.error(error);
-	}
+	val = val.toString();
+	if(options.debug) { console.log("tasmotaCommand: " + cmd + " val: " + val);}
+	MQTTclient.publish("cmnd/" + options.mqtttasmota + "/" + cmd, val);
 }
 
 function setPWM(percent) {
@@ -98,7 +95,7 @@ function setPWM(percent) {
 }
 
 function setpwmfrequency(value) {
-	tasmotaCommand("pwmfrequency", value);
+	tasmotaCommand("PWMFrequency", value);
 }
 
 var MQTTclient = mqtt.connect("mqtt://"+options.mqtthost,{clientId: options.mqttclientid});
@@ -111,25 +108,42 @@ MQTTclient.on("error",function(error){
 		process.exit(1)
 	});
 
-MQTTclient.subscribe(options.mqttvzlogger);
-MQTTclient.subscribe(options.mqtttasmota);
+MQTTclient.subscribe(options.mqttagg);
+MQTTclient.subscribe("tele/"+options.mqtttasmota+"/SENSOR");
+MQTTclient.subscribe(options.mqttheatermeter);
 MQTTclient.subscribe(options.mqttheater);
 MQTTclient.subscribe(options.mqttsysopstatus);
-MQTTclient.subscribe(options.mqttbatterypower);
 MQTTclient.subscribe("ehz2heizstab/#");
 
 MQTTclient.on('message',function(topic, message, packet){
 //	console.log(topic);
-	if(topic.includes(options.mqttvzlogger) ) {
-		var val=parseFloat(message.toString());
+	if(topic.includes(options.mqttagg) ) {
+		var obj=JSON.parse(message);
+		var val = obj.gridBalance;
 		ewma.insert(val);
-		last_vzlogger = Date.now();
+		battery_power = obj.totalBatteryPower
+		if(options.debug){ console.log("gridBalance: " + val + " battery_power: " + battery_power);}
+		last_agg = Date.now();
 	} else if(topic.includes(options.mqtttasmota)) {
 		var obj=JSON.parse(message);
-		power_real = obj.HS[options.mqtttasmotapower];
-		ssr_temp = obj.DS18B20.Temperature;
+		console.log(util.inspect(obj));
+		var found = findVal(obj, options.mqttssrtemp);
+		if(found) {
+			ssr_temp = found.Temperature;
+		}
+		found = findVal(obj, options.mqttwatertemp);
+		if(found) {
+			water_temp = found.Temperature;
+		}
 		last_tasmota = Date.now();
-		if(options.debug){ console.log("power_real: " + power_real + " SSR-Temperature: " + ssr_temp);}
+		if(options.debug){ 
+			console.log("SSR-Temperature: " + ssr_temp);
+			console.log("Water-Temperature: " + water_temp);
+		}
+	} else if(topic.includes(options.mqttheatermeter)) {
+		var obj=JSON.parse(message);
+		power_real = obj[options.mqttheatermeterpower] * 1000;
+		if(options.debug){ console.log("power_real: " + power_real);}
 	} else if(topic.includes(options.mqttheater)) {
 		var obj=JSON.parse(message);
 		water_temp = obj[options.mqttwatertemp];
@@ -138,11 +152,7 @@ MQTTclient.on('message',function(topic, message, packet){
 		var obj=JSON.parse(message);
 		system_op_status = obj["SystemOpStatus"];
 		if(options.debug){ console.log("system_op_status: " + system_op_status);}
-	} else if(topic.includes(options.mqttbatterypower)) {
-		var obj=JSON.parse(message);
-		battery_power = obj["BatteryPower"];
-		if(options.debug){ console.log("battery_power: " + battery_power);}
-	}else if(topic.includes("ehz2heizstab")) {
+	} else if(topic.includes("ehz2heizstab")) {
 		var obj=JSON.parse(message);
 		force_heating = obj["force_heating"];
 		if(options.debug){ console.log("force_heating: " + force_heating);}
@@ -156,8 +166,8 @@ tasmotaCommand("pwmfrequency", 10);
 async function loop() {
 	if(ewma.value()) {
 		const power_available = -ewma.value();
-		const max_percent = power2percent(powerArray, power_available + power_real + battery_power);
-		if(Date.now()-last_tasmota > 60000 || Date.now()-last_vzlogger > 60000) {
+		const max_percent = power2percent(powerArray, power_available + power_real);
+		if(Date.now()-last_tasmota > 60000 || Date.now()-last_agg > 60000) {
 			console.log("stale data (MQTT)");
 			await setPWM(0);
 		} else if(heating_done && water_temp > options.heatstart) {
@@ -173,9 +183,9 @@ async function loop() {
 				percent_set = 100;
 			} else {
 				if(power_available > 500) {
-					if(percent_set < 40) {
-						percent_set = 40;
-					}
+//					if(percent_set < 40) {
+//						percent_set = 40;
+//					}
 					percent_set += power_available/200;
 				} else if(power_available < 0) {
 					percent_set -= 10;
@@ -186,7 +196,8 @@ async function loop() {
 				if(power_available < 6000.0 && power_real < 100.0 && percent_set == 100) {
 					percent_set = max_percent;
 				}
-				if(system_op_status != 1 && system_op_status != 5) {
+				if(battery_power > 100) {
+//				if(system_op_status != 1 && system_op_status != 5) {
 					percent_set = 0;
 				}
 			}
