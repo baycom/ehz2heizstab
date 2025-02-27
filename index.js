@@ -16,7 +16,6 @@ const optionDefinitions = [
 	{ name: 'mqttheater', alias: 'f', type: String,  defaultValue: "eta/192.168.10.99"}, 
 	{ name: 'mqttwatertemp', alias: 'T', type: String,  defaultValue:"/112/10111/0/0/12271/Warmwasserspeicher"},
 	{ name: 'mqttssrtemp', alias: 'r', type: String,  defaultValue:"DS18B20"},
-	{ name: 'mqttsysopstatus', alias: 'o', type: String,  defaultValue:"Batrium/4538/3233"},
 	{ name: 'heatstart', alias: 's', type: Number,  defaultValue: 35.0},
 	{ name: 'heatstop', alias: 'S', type: Number,  defaultValue: 47.0},
 	{ name: 'window', alias: 'w', type: Number,  defaultValue: 10},
@@ -49,7 +48,6 @@ console.log("MQTT Htr-Meter-Power: " + options.mqttheatermeterpower);
 console.log("MQTT Heater-Topic   : " + options.mqttheater);
 console.log("MQTT Watertemp-Var  : " + options.mqttwatertemp);
 console.log("MQTT SSR-temp-Var   : " + options.mqttssrtemp);
-console.log("MQTT SystemOpStatus : " + options.mqttsysopstatus);
 console.log("Start heating       : " + options.heatstart);
 console.log("Stop heating        : " + options.heatstop);
 console.log("Smoothing Window (s): " + options.window);
@@ -112,11 +110,9 @@ MQTTclient.subscribe(options.mqttagg);
 MQTTclient.subscribe("tele/"+options.mqtttasmota+"/SENSOR");
 MQTTclient.subscribe(options.mqttheatermeter);
 MQTTclient.subscribe(options.mqttheater);
-MQTTclient.subscribe(options.mqttsysopstatus);
 MQTTclient.subscribe("ehz2heizstab/#");
 
 MQTTclient.on('message',function(topic, message, packet){
-//	console.log(topic);
 	if(topic.includes(options.mqttagg) ) {
 		var obj=JSON.parse(message);
 		var val = obj.gridBalance;
@@ -148,10 +144,6 @@ MQTTclient.on('message',function(topic, message, packet){
 		var obj=JSON.parse(message);
 		water_temp = obj[options.mqttwatertemp];
 		if(options.debug){ console.log("water_temp: " + water_temp);}
-	} else if(topic.includes(options.mqttsysopstatus)) {
-		var obj=JSON.parse(message);
-		system_op_status = obj["SystemOpStatus"];
-		if(options.debug){ console.log("system_op_status: " + system_op_status);}
 	} else if(topic.includes("ehz2heizstab")) {
 		var obj=JSON.parse(message);
 		force_heating = obj["force_heating"];
@@ -183,9 +175,6 @@ async function loop() {
 				percent_set = 100;
 			} else {
 				if(power_available > 500) {
-//					if(percent_set < 40) {
-//						percent_set = 40;
-//					}
 					percent_set += power_available/200;
 				} else if(power_available < 0) {
 					percent_set -= 10;
@@ -197,7 +186,6 @@ async function loop() {
 					percent_set = max_percent;
 				}
 				if(battery_power > 100) {
-//				if(system_op_status != 1 && system_op_status != 5) {
 					percent_set = 0;
 				}
 			}
