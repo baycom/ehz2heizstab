@@ -96,7 +96,7 @@ function setpwmfrequency(value) {
 	tasmotaCommand("PWMFrequency", value);
 }
 
-var MQTTclient = mqtt.connect("mqtt://"+options.mqtthost,{clientId: options.mqttclientid});
+var MQTTclient = mqtt.connect("mqtt://"+options.mqtthost);
 	MQTTclient.on("connect",function(){
 	if(options.debug){ console.log("MQTT connected");}
 })
@@ -130,11 +130,16 @@ MQTTclient.on('message',function(topic, message, packet){
 		if(found) {
 			water_temp = found.Temperature;
 		}
+		found = findVal(obj, options.mqttheatermeterpower);
+		if(found) {
+			power_real = found;
+		}
 		last_tasmota = Date.now();
 		if(options.debug){ 
 			console.log(util.inspect(obj));
 			console.log("SSR-Temperature: " + ssr_temp);
 			console.log("Water-Temperature: " + water_temp);
+			console.log("Heater-Power:: " + power_real);
 		}
 	} else if(topic.includes(options.mqttheatermeter)) {
 		var obj=JSON.parse(message);
@@ -142,8 +147,11 @@ MQTTclient.on('message',function(topic, message, packet){
 		if(options.debug){ console.log("power_real: " + power_real);}
 	} else if(topic.includes(options.mqttheater)) {
 		var obj=JSON.parse(message);
-		water_temp = obj[options.mqttwatertemp];
-		if(options.debug){ console.log("water_temp: " + water_temp);}
+		var found = findVal(obj, options.mqttwatertemp);
+		if(found) {
+			water_temp = found;
+			if(options.debug){ console.log("water_temp: " + water_temp);}
+		}
 	} else if(topic.includes("ehz2heizstab")) {
 		var obj=JSON.parse(message);
 		force_heating = obj["force_heating"];
