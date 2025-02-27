@@ -126,7 +126,6 @@ MQTTclient.on('message',function(topic, message, packet){
 		last_agg = Date.now();
 	} else if(topic.includes(options.mqtttasmota)) {
 		var obj=JSON.parse(message);
-		console.log(util.inspect(obj));
 		var found = findVal(obj, options.mqttssrtemp);
 		if(found) {
 			ssr_temp = found.Temperature;
@@ -137,6 +136,7 @@ MQTTclient.on('message',function(topic, message, packet){
 		}
 		last_tasmota = Date.now();
 		if(options.debug){ 
+			console.log(util.inspect(obj));
 			console.log("SSR-Temperature: " + ssr_temp);
 			console.log("Water-Temperature: " + water_temp);
 		}
