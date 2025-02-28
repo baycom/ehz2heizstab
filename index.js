@@ -89,7 +89,7 @@ async function tasmotaCommand(cmd, val) {
 
 function setPWM(percent) {
 	percent=parseInt(percent);
-	tasmotaCommand("Dimmer", percent);
+	tasmotaCommand("PWM1", percent);
 }
 
 function setpwmfrequency(value) {
@@ -160,7 +160,7 @@ MQTTclient.on('message',function(topic, message, packet){
 	}
 });
 
-
+tasmotaCommand("setoption15", "off");
 tasmotaCommand("pwmfrequency", 10);
 
 async function loop() {
@@ -180,17 +180,17 @@ async function loop() {
 			heating_done =false;
 			if(options.debug){ console.log("force_heating: " + force_heating + " heating_done: " + heating_done + " power_available: " + parseInt(power_available) + " / power_real: " + power_real, "/ max_percent: " + max_percent);}
 			if(force_heating) {
-				percent_set = 100;
+				percent_set = 1023;
 			} else {
 				if(power_available > 500) {
-					percent_set += power_available/200;
+					percent_set += power_available/20;
 				} else if(power_available < 0) {
-					percent_set -= 10;
+					percent_set -= 100;
 				}
-				if(percent_set > 100) {
-					percent_set = 100;
+				if(percent_set > 1023) {
+					percent_set = 1023;
 				}
-				if(power_available < 6000.0 && power_real < 100.0 && percent_set == 100) {
+				if(power_available < 6000.0 && power_real < 100.0 && percent_set == 1023) {
 					percent_set = max_percent;
 				}
 				if(battery_power > 100) {
