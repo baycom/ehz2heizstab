@@ -19,39 +19,37 @@ const optionDefinitions = [
 	{ name: 'heatstart', alias: 's', type: Number,  defaultValue: 35.0},
 	{ name: 'heatstop', alias: 'S', type: Number,  defaultValue: 47.0},
 	{ name: 'window', alias: 'w', type: Number,  defaultValue: 10},
+	{ name: 'maxpower', alias: 'P', type: Number,  defaultValue: 6000},
 	{ name: 'debug', alias: 'd', type: Boolean,  defaultValue: false}
   ];
 
 const options = commandLineArgs(optionDefinitions)
-const powerArray=[[0,0],[5,300],[10,600],[15,900],[20,1200],[25,1500],[30,1800],[35,2100],[40,2400],[45,2700],
-		[50,3000],[55,3300],[60,3600],[65,3900],[70,4200],[75,4500],[80,4800],[85,5100],[90,5400],
-		[95,5700],[100,6000]];
 
 var ewma = new EWMA(options.window*1000);
 var last_agg = 0;
 var last_tasmota = 0;
-var power_real = 0;
+var heater_power = 0;
 var ssr_temp = 0;
-var percent_set = 0;
+var pwm_set = 0;
 var heating_done = false;
 var water_temp = 0;
 var system_op_status = 0;
-var battery_power = 0;
 var force_heating = false;
 
-console.log("MQTT host           : " + options.mqtthost);
-console.log("MQTT Client ID      : " + options.mqttclientid);
-console.log("MQTT Agg-Topic      : " + options.mqttagg);
-console.log("MQTT Tasmota-Topic  : " + options.mqtttasmota);
-console.log("MQTT Heater-Meter   : " + options.mqttheatermeter);
-console.log("MQTT Htr-Meter-Power: " + options.mqttheatermeterpower);
-console.log("MQTT Heater-Topic   : " + options.mqttheater);
-console.log("MQTT Watertemp-Var  : " + options.mqttwatertemp);
-console.log("MQTT SSR-temp-Var   : " + options.mqttssrtemp);
-console.log("Start heating       : " + options.heatstart);
-console.log("Stop heating        : " + options.heatstop);
-console.log("Smoothing Window (s): " + options.window);
-console.log("Interval (s)        : " + options.interval);
+console.log("MQTT host           : ",  options.mqtthost);
+console.log("MQTT Client ID      : ",  options.mqttclientid);
+console.log("MQTT Agg-Topic      : ",  options.mqttagg);
+console.log("MQTT Tasmota-Topic  : ",  options.mqtttasmota);
+console.log("MQTT Heater-Meter   : ",  options.mqttheatermeter);
+console.log("MQTT Htr-Meter-Power: ",  options.mqttheatermeterpower);
+console.log("MQTT Heater-Topic   : ",  options.mqttheater);
+console.log("MQTT Watertemp-Var  : ",  options.mqttwatertemp);
+console.log("MQTT SSR-temp-Var   : ",  options.mqttssrtemp);
+console.log("Max Power           : ",  options.maxpower);
+console.log("Start heating       : ",  options.heatstart);
+console.log("Stop heating        : ",  options.heatstop);
+console.log("Smoothing Window (s): ",  options.window);
+console.log("Interval (s)        : ",  options.interval);
 
 function findVal(object, key) {
   var value;
@@ -68,28 +66,15 @@ function findVal(object, key) {
   return value;
 }
 
-function power2percent(array, power) {
-  for (let i = 0; i < array.length; i++) {
-  	const pwr = array[i][1];
-  	if(pwr>power) {
-  		if(i == 0) {
-  			return 0;
-		}
-		return array[i-1][0];
-  	}
-  }
-  return 100;
-}
-
 async function tasmotaCommand(cmd, val) {
 	val = val.toString();
-	if(options.debug) { console.log("tasmotaCommand: " + cmd + " val: " + val);}
-	MQTTclient.publish("cmnd/" + options.mqtttasmota + "/" + cmd, val);
+	if(options.debug) { console.log("tasmotaCommand: ",  cmd, " val: ",  val);}
+	MQTTclient.publish("cmnd/" +  options.mqtttasmota + "/" +  cmd, val);
 }
 
-function setPWM(percent) {
-	percent=parseInt(percent);
-	tasmotaCommand("PWM1", percent);
+function setPWM(value) {
+	value=parseInt(value);
+	tasmotaCommand("PWM1", value);
 }
 
 function setpwmfrequency(value) {
@@ -102,7 +87,7 @@ var MQTTclient = mqtt.connect("mqtt://"+options.mqtthost);
 })
 
 MQTTclient.on("error",function(error){
-		console.log("Can't connect" + error);
+		console.log("Can't connect",  error);
 		process.exit(1)
 	});
 
@@ -115,10 +100,9 @@ MQTTclient.subscribe("ehz2heizstab/#");
 MQTTclient.on('message',function(topic, message, packet){
 	if(topic.includes(options.mqttagg) ) {
 		var obj=JSON.parse(message);
-		var val = obj.gridBalance;
+		var val = obj.gridBalance + (obj.totalBatteryPower>0?obj.totalBatteryPower:0);
 		ewma.insert(val);
-		battery_power = obj.totalBatteryPower
-		if(options.debug){ console.log("gridBalance: " + val + " battery_power: " + battery_power);}
+		if(options.debug){ console.log("gridBalance: ",  obj.gridBalance, " battery_power: ",  obj.totalBatteryPower, "ewma: ", val);}
 		last_agg = Date.now();
 	} else if(topic.includes(options.mqtttasmota)) {
 		var obj=JSON.parse(message);
@@ -132,30 +116,30 @@ MQTTclient.on('message',function(topic, message, packet){
 		}
 		found = findVal(obj, options.mqttheatermeterpower);
 		if(found) {
-			power_real = found;
+			heater_power = found;
 		}
 		last_tasmota = Date.now();
 		if(options.debug){ 
 			console.log(util.inspect(obj));
-			console.log("SSR-Temperature: " + ssr_temp);
-			console.log("Water-Temperature: " + water_temp);
-			console.log("Heater-Power:: " + power_real);
+			console.log("SSR-Temperature: ",  ssr_temp);
+			console.log("Water-Temperature: ",  water_temp);
+			console.log("Heater-Power:: ",  heater_power);
 		}
 	} else if(topic.includes(options.mqttheatermeter)) {
 		var obj=JSON.parse(message);
-		power_real = obj[options.mqttheatermeterpower] * 1000;
-		if(options.debug){ console.log("power_real: " + power_real);}
+		heater_power = obj[options.mqttheatermeterpower] * 1000;
+		if(options.debug){ console.log("heater_power: ",  heater_power);}
 	} else if(topic.includes(options.mqttheater)) {
 		var obj=JSON.parse(message);
 		var found = findVal(obj, options.mqttwatertemp);
 		if(found) {
 			water_temp = found;
-			if(options.debug){ console.log("water_temp: " + water_temp);}
+			if(options.debug){ console.log("water_temp: ",  water_temp);}
 		}
 	} else if(topic.includes("ehz2heizstab")) {
 		var obj=JSON.parse(message);
 		force_heating = obj["force_heating"];
-		if(options.debug){ console.log("force_heating: " + force_heating);}
+		if(options.debug){ console.log("force_heating: ",  force_heating);}
 		heating_done = false;
 	}
 });
@@ -166,7 +150,6 @@ tasmotaCommand("pwmfrequency", 10);
 async function loop() {
 	if(ewma.value()) {
 		const power_available = -ewma.value();
-		const max_percent = power2percent(powerArray, power_available + power_real);
 		if(Date.now()-last_tasmota > 60000 || Date.now()-last_agg > 60000) {
 			console.log("stale data (MQTT)");
 			await setPWM(0);
@@ -178,29 +161,35 @@ async function loop() {
 			force_heating = false;
 		} else {
 			heating_done =false;
-			if(options.debug){ console.log("force_heating: " + force_heating + " heating_done: " + heating_done + " power_available: " + parseInt(power_available) + " / power_real: " + power_real, "/ max_percent: " + max_percent);}
+			if(options.debug){ console.log("force_heating: ",  force_heating, " heating_done: ",  heating_done, " power_available: ",  parseInt(power_available), " / heater_power: ",  heater_power);}
 			if(force_heating) {
-				percent_set = 1023;
+				pwm_set = 1023;
 			} else {
 				if(power_available > 500) {
-					percent_set += power_available/20;
+					var add_pwm = power_available/20;
+					pwm_set += add_pwm;
+					if(options.debug){ console.log("add pwm: ", add_pwm); }
 				} else if(power_available < 0) {
-					percent_set -= 100;
+					var del_pwm = power_available * options.maxpower/1024.0;
+					pwm_set += del_pwm;
+					if(options.debug){ console.log("del pwm: ", del_pwm); }
 				}
-				if(percent_set > 1023) {
-					percent_set = 1023;
+				if(power_available < options.maxpower && heater_power < 100.0 && pwm_set == 1023) {
+					var limit_pwm =  power_available * options.maxpower/1024.0;
+					pwm_set = limit_pwm;
+					if(options.debug){ console.log("limit_pwm: ", limit_pwm); }
 				}
-				if(power_available < 6000.0 && power_real < 100.0 && percent_set == 1023) {
-					percent_set = max_percent;
+				if(pwm_set > 1023) {
+					pwm_set = 1023;
 				}
-				if(battery_power > 100) {
-					percent_set = 0;
+				if(pwm_set < 0) {
+					pwm_set = 0;
 				}
 			}
-			if(percent_set < 5 || ssr_temp >= 60) {
-				percent_set = 0;
+			if(pwm_set < 5 || ssr_temp >= 60) {
+				pwm_set = 0;
 			}
-			await setPWM(percent_set);
+			await setPWM(pwm_set);
 		}
 	}
 	setTimeout(loop, options.interval*1000);
