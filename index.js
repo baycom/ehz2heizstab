@@ -169,7 +169,7 @@ async function loop() {
 					var add_pwm = power_available/20;
 					pwm_set += add_pwm;
 					if(options.debug){ console.log("add pwm: ", add_pwm); }
-				} else if(power_available < 0) {
+				} else if(power_available < 50) {
 					var del_pwm = power_available * options.maxpower/1024.0;
 					pwm_set += del_pwm;
 					if(options.debug){ console.log("del pwm: ", del_pwm); }
