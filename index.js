@@ -100,7 +100,10 @@ MQTTclient.subscribe("ehz2heizstab/#");
 MQTTclient.on('message',function(topic, message, packet){
 	if(topic.includes(options.mqttagg) ) {
 		var obj=JSON.parse(message);
-		var val = obj.gridBalance + (obj.totalBatteryPower>0?obj.totalBatteryPower:0);
+		var val =0;
+		if(obj.totalBatteryPower < 100 && obj.totalBatteryPower > -100) {
+			val = obj.gridBalance;
+		}
 		ewma.insert(val);
 		if(options.debug){ console.log("gridBalance: ",  obj.gridBalance, " battery_power: ",  obj.totalBatteryPower, "ewma: ", val);}
 		last_agg = Date.now();
@@ -148,7 +151,7 @@ tasmotaCommand("setoption15", "off");
 tasmotaCommand("pwmfrequency", 10);
 
 async function loop() {
-	if(ewma.value()) {
+	if(!isNaN(ewma.value())) {
 		const power_available = -ewma.value();
 		if(Date.now()-last_tasmota > 60000 || Date.now()-last_agg > 60000) {
 			console.log("stale data (MQTT)");
@@ -166,11 +169,11 @@ async function loop() {
 				pwm_set = 1023;
 			} else {
 				if(power_available > 500) {
-					var add_pwm = power_available/20;
+					var add_pwm = ((power_available/20)/power_available)*1024;
 					pwm_set += add_pwm;
 					if(options.debug){ console.log("add pwm: ", add_pwm); }
-				} else if(power_available < 50) {
-					var del_pwm = power_available * options.maxpower/1024.0;
+				} else if(power_available < 500) {
+					var del_pwm = -((options.maxpower/10)/options.maxpower)*1024;
 					pwm_set += del_pwm;
 					if(options.debug){ console.log("del pwm: ", del_pwm); }
 				}
